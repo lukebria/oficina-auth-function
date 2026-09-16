@@ -1,0 +1,14 @@
+# Copie para terraform.tfvars (gitignored) e preencha com os valores reais.
+# Nunca commite terraform.tfvars — ele contém segredos.
+
+aws_region  = "us-east-1"
+environment = "dev"
+
+# URL base do backend oficina-mvp-java já publicado (sem barra final).
+backend_base_url = "https://api.oficina.example.com"
+
+# Mesmos valores configurados no backend oficina-mvp-java (INTERNAL_API_KEY / CUSTOMER_JWT_SECRET).
+internal_api_key    = "troque-esta-chave-interna-em-producao"
+customer_jwt_secret = "troque-este-segredo-de-cliente-em-producao-com-pelo-menos-32-caracteres"
+
+token_ttl_seconds = 900

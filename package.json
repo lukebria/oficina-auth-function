@@ -10,7 +10,8 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "jest",
-    "build": "tsc"
+    "build": "tsc",
+    "package:lambda": "node scripts/build-lambda.js"
   },
   "dependencies": {
     "jose": "^5.9.6"
