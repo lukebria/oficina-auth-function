@@ -95,7 +95,10 @@ Respostas:
 
 ## Deploy (Terraform)
 
-A infraestrutura desta function (Lambda + API Gateway) é provisionada pelo Terraform em [`terraform/`](terraform).
+A infraestrutura desta function (Lambda + API Gateway) é provisionada pelo Terraform em [`terraform/`](terraform)
+— totalmente independente do Terraform que provisiona o cluster EKS/ECR do backend
+([`oficina-mvp-infra-iac`](https://github.com/lukebria/oficina-mvp-infra-iac)); esta function não roda dentro
+daquele cluster.
 
 ### Pré-requisitos
 
