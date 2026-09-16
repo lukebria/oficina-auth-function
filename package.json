@@ -1,0 +1,26 @@
+{
+  "name": "oficina-auth-function",
+  "version": "0.1.0",
+  "description": "Function Serverless que valida CPF/CNPJ, consulta o backend oficina-mvp-java e emite o JWT do fluxo público de cliente.",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "build": "tsc"
+  },
+  "dependencies": {
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@types/aws-lambda": "^8.10.145",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.2",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.2"
+  }
+}
