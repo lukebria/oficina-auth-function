@@ -93,10 +93,76 @@ Respostas:
 | Sucesso | 200 | `{"token": "<jwt>"}` |
 | Erro inesperado (ex: backend fora do ar) | 500 | `{"message": "..."}` |
 
+## Deploy (Terraform)
+
+A infraestrutura desta function (Lambda + API Gateway) é provisionada pelo Terraform em [`terraform/`](terraform).
+
+### Pré-requisitos
+
+- Terraform >= 1.5.
+- Credenciais AWS configuradas (`aws configure` ou variáveis `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`).
+- Node.js instalado — o próprio `terraform apply` compila e empacota a function antes de subir o zip (ver
+  `scripts/build-lambda.js`).
+
+### O que é provisionado
+
+- `aws_lambda_function` (`nodejs22.x`), handler `src/handlers/aws/authenticateHandler.handler`.
+- IAM role de execução da Lambda + `AWSLambdaBasicExecutionRole` (permissão de logs).
+- Log group no CloudWatch (`/aws/lambda/<function_name>`).
+- Uma **HTTP API** (API Gateway v2, `payload_format_version = "1.0"` para bater com o formato
+  `APIGatewayProxyEvent` que o handler já espera) com a rota `POST /authenticate`.
+
+O empacotamento (`terraform/build.tf`) roda `npm run build` e monta o zip com `dist/src/**` + `node_modules/jose`
+— sem bundler, porque `jose` não tem dependências transitivas. Só reroda quando o código-fonte, o
+`package-lock.json` ou o `tsconfig.json` mudam.
+
+### Como rodar
+
+```bash
+cd terraform
+cp terraform.tfvars.example terraform.tfvars   # preencher com os valores reais — nunca commitar este arquivo
+terraform init
+terraform plan
+terraform apply
+```
+
+Ao final, o output `api_endpoint` traz a URL pública (`POST`) que consome o handler.
+
+O state fica **local** por enquanto (sem backend remoto configurado) — serve para uso individual; para trabalho
+em equipe/CI, configurar um backend remoto (ex: S3 + DynamoDB) em `terraform/versions.tf`.
+
+### Configuração pendente para um ambiente real (fica para depois)
+
+O que está em `terraform/` hoje é suficiente para provisionar a function num ambiente pessoal/de teste. Antes de
+considerar isso pronto para um ambiente real de produção, falta configurar:
+
+- **`aws_region`** — não tem default hoje (variável obrigatória); definir a mesma região onde o resto da infra
+  (cluster EKS `oficina-mecnica-lab-cluster`) roda, para manter tudo no mesmo lugar.
+- **`backend_base_url`** — hoje é só o placeholder do `terraform.tfvars.example`; precisa apontar para a URL
+  pública real do backend `oficina-mvp-java` já implantado (o `LoadBalancer`/domínio do serviço em produção, não
+  `localhost`).
+- **`internal_api_key` e `customer_jwt_secret`** — precisam ser os mesmos valores reais configurados como
+  `Secret` no backend Java em produção (hoje só há placeholder de exemplo). Como ficam em texto puro numa
+  variável do Terraform, o ideal é buscar esses valores de um secret manager (AWS Secrets Manager ou SSM
+  Parameter Store) em vez de digitá-los direto no `terraform.tfvars`.
+- **Backend remoto do state** (S3 + DynamoDB, ou Terraform Cloud) — sem isso, não dá para rodar `terraform
+  apply` a partir de um pipeline de CI/CD nem trabalhar em equipe com segurança.
+- **CORS na HTTP API** — se algum frontend for chamar `POST /authenticate` direto do navegador, falta configurar
+  `cors_configuration` em `aws_apigatewayv2_api`.
+- **Rate limiting/throttling** — o endpoint recebe CPF/CNPJ como entrada; sem limite de requisições por IP/chave
+  na API Gateway (ou WAF na frente), fica exposto a tentativas de enumeração de documentos.
+- **Domínio customizado + certificado ACM** — hoje a URL fica no domínio padrão do API Gateway
+  (`*.execute-api.<região>.amazonaws.com`); um domínio próprio é opcional, mas comum em produção.
+- **CI/CD** — não existe pipeline neste repositório ainda; hoje o `terraform apply` é manual, rodado localmente.
+
+Nenhum desses pontos é implementado agora — ficam de propósito para quando a configuração de cloud real for
+definida.
+
 ## Fora de escopo deste repositório (por enquanto)
 
-- Infra como código para o deploy (SAM/CDK/Serverless Framework/Terraform) e o provisionamento do próprio API
-  Gateway — este repositório só contém o código da function e como testá-la localmente.
-- Empacotamento otimizado para cold start (bundling com esbuild).
+- Backend remoto do state do Terraform (S3 + DynamoDB) — hoje o state fica local, ver
+  [Deploy (Terraform)](#deploy-terraform).
+- Empacotamento otimizado para cold start (bundling com esbuild) — o zip inclui `node_modules/jose` sem
+  minificação/tree-shaking.
 - Handler para outro provedor serverless (a estrutura já deixa espaço em `handlers/`, mas nenhum outro foi
   escrito ainda).
