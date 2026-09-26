@@ -44,19 +44,26 @@ sequenceDiagram
     participant Cliente
     participant Function as oficina-auth-function (Lambda)
     participant Backend as oficina-mvp-java (interno)
+    participant Kong as Kong (API Gateway, rota pública)
 
     Cliente->>Function: POST /authenticate {"document": "CPF/CNPJ"}
     Function->>Function: valida CPF/CNPJ (documentValidator)
     Function->>Backend: GET /api/internal/customers/{document}<br/>X-Internal-Api-Key
     Backend-->>Function: 200 {found, customerId, status} | 404
     alt status = ACTIVE
-        Function->>Function: assina JWT (HS256, CUSTOMER_JWT_SECRET)
+        Function->>Function: assina JWT (HS256, CUSTOMER_JWT_SECRET,<br/>iss=CUSTOMER_JWT_ISSUER)
         Function-->>Cliente: 200 {"token": "..."}
     else status = INACTIVE
         Function-->>Cliente: 403 (sem assinar token)
     else não encontrado
         Function-->>Cliente: 404
     end
+
+    Note over Cliente,Kong: Uso do token nas rotas públicas (fora desta function)
+    Cliente->>Kong: GET /api/public/service-orders/{code}<br/>Authorization: Bearer token
+    Kong->>Kong: plugin jwt: valida assinatura + expiração<br/>(consumer casado pelo claim iss)
+    Kong->>Backend: encaminha (só se o Kong validar)
+    Backend->>Backend: revalida status do cliente no banco
 ```
 
 Infraestrutura provisionada (ver [Deploy (Terraform)](#deploy-terraform)): API Gateway HTTP API própria desta
@@ -77,11 +84,20 @@ respeitar:
 | Resposta (cliente existe) | `200 {"found": true, "customerId": number, "name": string, "status": "ACTIVE" \| "INACTIVE"}` |
 | Resposta (não existe) | `404 {"found": false, "customerId": null, "name": null, "status": "NOT_FOUND"}` |
 | Algoritmo do JWT | HS256 |
-| Segredo do JWT | `CUSTOMER_JWT_SECRET` — **precisa ser o mesmo valor** configurado no backend, nunca o `JWT_SECRET` administrativo |
-| Claims do JWT | `sub` = documento normalizado (só dígitos), `role` = `"CUSTOMER"` |
+| Segredo do JWT | `CUSTOMER_JWT_SECRET` — **precisa ser o mesmo valor** configurado no backend **e no Kong** (`oficina-mvp-infra-iac`), nunca o `JWT_SECRET` administrativo |
+| Claims do JWT | `sub` = documento normalizado (só dígitos), `role` = `"CUSTOMER"`, `iss` = `CUSTOMER_JWT_ISSUER` (default `"customer-app"`) |
 | Validade do JWT | Curta — default 15 min (`TOKEN_TTL_SECONDS`), token serve só para consultar/aprovar uma OS |
 
 Um cliente `INACTIVE` nunca recebe token — a function responde `403` antes de chamar o assinador.
+
+### Validação do token nas rotas protegidas — API Gateway (Kong) + aplicação
+
+O claim `iss` existe para o **Kong** (API Gateway da aplicação principal) conseguir validar a assinatura e a
+expiração do token **antes mesmo de rotear a requisição para o backend** — via o plugin `jwt` nativo do Kong,
+configurado em `oficina-mvp-infra-iac` com um `KongConsumer` cujo `username` é igual a este `iss`. É uma decisão
+de defesa em profundidade: o Kong barra tokens inválidos/expirados na borda, e o backend **continua também**
+validando o token e revalidando o status do cliente no banco a cada request (não foi removido nada da
+aplicação) — ver ADR-006 em `oficina-mvp-java-backend/docs/architecture/adrs/`.
 
 ## Variáveis de ambiente
 
@@ -89,7 +105,8 @@ Ver `.env.example`:
 
 - `BACKEND_BASE_URL` — URL base do backend Java (sem barra final).
 - `INTERNAL_API_KEY` — mesma chave configurada em `INTERNAL_API_KEY` no backend.
-- `CUSTOMER_JWT_SECRET` — mesmo segredo configurado em `CUSTOMER_JWT_SECRET` no backend.
+- `CUSTOMER_JWT_SECRET` — mesmo segredo configurado em `CUSTOMER_JWT_SECRET` no backend e no Kong.
+- `CUSTOMER_JWT_ISSUER` — claim `iss` do token; precisa bater com o `username` do `KongConsumer` no Kong (default `customer-app`).
 - `TOKEN_TTL_SECONDS` — validade do token emitido, em segundos (default `900`).
 
 ## Rodando localmente
