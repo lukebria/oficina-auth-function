@@ -37,10 +37,38 @@ O núcleo (`core/`) não sabe que roda em AWS Lambda. Portar para outro provedor
 Functions, que o autor deste projeto já usou antes) é escrever um novo arquivo em `handlers/<provedor>/`, chamando
 o mesmo `authenticateByDocument` com as mesmas portas — sem tocar em `core/` nem nos `adapters/`.
 
+## Diagrama de arquitetura
+
+```mermaid
+sequenceDiagram
+    participant Cliente
+    participant Function as oficina-auth-function (Lambda)
+    participant Backend as oficina-mvp-java (interno)
+
+    Cliente->>Function: POST /authenticate {"document": "CPF/CNPJ"}
+    Function->>Function: valida CPF/CNPJ (documentValidator)
+    Function->>Backend: GET /api/internal/customers/{document}<br/>X-Internal-Api-Key
+    Backend-->>Function: 200 {found, customerId, status} | 404
+    alt status = ACTIVE
+        Function->>Function: assina JWT (HS256, CUSTOMER_JWT_SECRET)
+        Function-->>Cliente: 200 {"token": "..."}
+    else status = INACTIVE
+        Function-->>Cliente: 403 (sem assinar token)
+    else não encontrado
+        Function-->>Cliente: 404
+    end
+```
+
+Infraestrutura provisionada (ver [Deploy (Terraform)](#deploy-terraform)): API Gateway HTTP API própria desta
+function (distinta do Kong que protege a aplicação principal) → Lambda → CloudWatch Logs (estruturados em
+JSON, ver [Observabilidade e logs](#observabilidade-e-logs)).
+
 ## Contrato com o backend `oficina-mvp-java`
 
-Ver `docs/architecture.md` (seção 5, "Segurança") e `README.md` do backend para o lado que já está implementado
-lá. Resumo do que esta function precisa respeitar:
+Ver [`docs/architecture.md`](https://github.com/lukebria/oficina-mvp-java-backend/blob/master/docs/architecture.md)
+(seção 5, "Segurança") no repositório `oficina-mvp-java-backend` — este documento vive naquele repositório, não
+neste — e o `README.md` de lá para o lado que já está implementado. Resumo do que esta function precisa
+respeitar:
 
 | Item | Valor |
 |------|-------|
@@ -93,6 +121,30 @@ Respostas:
 | Sucesso | 200 | `{"token": "<jwt>"}` |
 | Erro inesperado (ex: backend fora do ar) | 500 | `{"message": "..."}` |
 
+### Testando com curl / Postman
+
+```bash
+curl -X POST "$API_ENDPOINT/authenticate" \
+  -H "Content-Type: application/json" \
+  -d '{"document": "52998224725"}'
+```
+
+Como a function tem um único endpoint, não há uma collection Postman elaborada — importar a requisição acima
+diretamente no Postman/Insomnia cobre o mesmo caso de uso. `$API_ENDPOINT` é o output `api_endpoint` do
+Terraform (ver seção seguinte).
+
+## Observabilidade e logs
+
+Logs estruturados em JSON (`src/adapters/logger.ts`), correlacionados pelo `requestId` do próprio API Gateway
+(`event.requestContext.requestId`) — cada linha no CloudWatch Logs é um objeto `{level, message, requestId,
+timestamp, ...}`, filtrável/agrupável por requisição. O documento (CPF/CNPJ) nunca é logado em texto puro — só
+`customerId` no log de sucesso.
+
+Métricas básicas (invocações, duração, erros) já ficam disponíveis via CloudWatch por padrão, no log group
+`/aws/lambda/<function_name>` (retenção configurável via `log_retention_days`). Integração com uma ferramenta
+de observabilidade dedicada (New Relic, decisão do projeto — ver
+`POST-TECH/FASE-3/plans/05-observabilidade-new-relic.md`) ainda não foi feita neste repositório.
+
 ## Deploy (Terraform)
 
 A infraestrutura desta function (Lambda + API Gateway) é provisionada pelo Terraform em [`terraform/`](terraform)
@@ -131,40 +183,47 @@ terraform apply
 
 Ao final, o output `api_endpoint` traz a URL pública (`POST`) que consome o handler.
 
-O state fica **local** por enquanto (sem backend remoto configurado) — serve para uso individual; para trabalho
-em equipe/CI, configurar um backend remoto (ex: S3 + DynamoDB) em `terraform/versions.tf`.
+### CI/CD (GitHub Actions)
+
+- **`ci.yml`** — em PR para `homolog`/`master`: `npm ci` → `typecheck` → `test`. Não toca em infra.
+- **`deploy.yml`** — em push para `homolog`/`master` (ou disparo manual): testes → `npm run package:lambda`
+  (compila e monta `terraform/.build/lambda`, necessário mesmo para o `terraform plan` — o provisioner
+  `local-exec` do `build.tf` só roda no `apply`) → `terraform init/plan/apply`, seguindo o git flow do projeto.
+
+⚠️ **Ainda não configurado**: os GitHub Secrets/Variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
+`AWS_SESSION_TOKEN`, `AWS_DEFAULT_REGION`, `BACKEND_BASE_URL`, `INTERNAL_API_KEY`, `CUSTOMER_JWT_SECRET`) —
+sem eles, o job `deploy` falha no passo "Configure AWS Credentials". `INTERNAL_API_KEY`/`CUSTOMER_JWT_SECRET`
+precisam ser **idênticos** aos configurados no repositório `oficina-mvp-java-backend`.
+
+### State remoto
+
+Backend S3 (`terraform/backend.tf`), reaproveitando o **mesmo bucket** do `oficina-mvp-infra-iac`
+(key própria: `oficina-lab/auth-function/terraform.tfstate`) e a **mesma tabela DynamoDB** de lock
+(`oficina-mvp-infra-iac-tf-lock`, compartilhada entre os states — não colide porque o `LockID` inclui
+bucket+key). 🔗 **Dependência de ordem**: essa tabela só existe depois que `oficina-mvp-infra-iac` aplicar seu
+`dynamodb.tf` — rodar `terraform init` aqui antes disso falha por falta da tabela de lock.
 
 ### Configuração pendente para um ambiente real (fica para depois)
 
 O que está em `terraform/` hoje é suficiente para provisionar a function num ambiente pessoal/de teste. Antes de
 considerar isso pronto para um ambiente real de produção, falta configurar:
 
-- **`aws_region`** — não tem default hoje (variável obrigatória); definir a mesma região onde o resto da infra
-  (cluster EKS `oficina-mecnica-lab-cluster`) roda, para manter tudo no mesmo lugar.
-- **`backend_base_url`** — hoje é só o placeholder do `terraform.tfvars.example`; precisa apontar para a URL
-  pública real do backend `oficina-mvp-java` já implantado (o `LoadBalancer`/domínio do serviço em produção, não
-  `localhost`).
-- **`internal_api_key` e `customer_jwt_secret`** — precisam ser os mesmos valores reais configurados como
-  `Secret` no backend Java em produção (hoje só há placeholder de exemplo). Como ficam em texto puro numa
-  variável do Terraform, o ideal é buscar esses valores de um secret manager (AWS Secrets Manager ou SSM
-  Parameter Store) em vez de digitá-los direto no `terraform.tfvars`.
-- **Backend remoto do state** (S3 + DynamoDB, ou Terraform Cloud) — sem isso, não dá para rodar `terraform
-  apply` a partir de um pipeline de CI/CD nem trabalhar em equipe com segurança.
+- **`aws_region`/`backend_base_url`/`internal_api_key`/`customer_jwt_secret` em produção real** — hoje esses
+  valores chegam via `TF_VAR_*` injetados pelo pipeline (`deploy.yml`) a partir de GitHub Secrets/Variables
+  ainda não configurados (ver [CI/CD](#cicd-github-actions)) — para rodar local, continuam vindo de
+  `terraform.tfvars` (placeholder de exemplo em `terraform.tfvars.example`).
 - **CORS na HTTP API** — se algum frontend for chamar `POST /authenticate` direto do navegador, falta configurar
   `cors_configuration` em `aws_apigatewayv2_api`.
 - **Rate limiting/throttling** — o endpoint recebe CPF/CNPJ como entrada; sem limite de requisições por IP/chave
   na API Gateway (ou WAF na frente), fica exposto a tentativas de enumeração de documentos.
 - **Domínio customizado + certificado ACM** — hoje a URL fica no domínio padrão do API Gateway
   (`*.execute-api.<região>.amazonaws.com`); um domínio próprio é opcional, mas comum em produção.
-- **CI/CD** — não existe pipeline neste repositório ainda; hoje o `terraform apply` é manual, rodado localmente.
 
 Nenhum desses pontos é implementado agora — ficam de propósito para quando a configuração de cloud real for
 definida.
 
 ## Fora de escopo deste repositório (por enquanto)
 
-- Backend remoto do state do Terraform (S3 + DynamoDB) — hoje o state fica local, ver
-  [Deploy (Terraform)](#deploy-terraform).
 - Empacotamento otimizado para cold start (bundling com esbuild) — o zip inclui `node_modules/jose` sem
   minificação/tree-shaking.
 - Handler para outro provedor serverless (a estrutura já deixa espaço em `handlers/`, mas nenhum outro foi

@@ -1,5 +1,9 @@
 # Copie para terraform.tfvars (gitignored) e preencha com os valores reais.
 # Nunca commite terraform.tfvars — ele contém segredos.
+#
+# No CI/CD (.github/workflows/deploy.yml), estes valores vêm de GitHub Secrets/Variables via TF_VAR_*
+# (TF_VAR_aws_region, TF_VAR_backend_base_url, TF_VAR_internal_api_key, TF_VAR_customer_jwt_secret) —
+# este arquivo .tfvars.example só serve para rodar `terraform apply` manualmente do seu ambiente local.
 
 aws_region  = "us-east-1"
 environment = "dev"
