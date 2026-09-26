@@ -28,8 +28,14 @@ variable "internal_api_key" {
 
 variable "customer_jwt_secret" {
   type        = string
-  description = "Segredo (HS256) usado para assinar o JWT do cliente (mesmo valor de CUSTOMER_JWT_SECRET no backend)."
+  description = "Segredo (HS256) usado para assinar o JWT do cliente (mesmo valor de CUSTOMER_JWT_SECRET no backend e no Kong)."
   sensitive   = true
+}
+
+variable "customer_jwt_issuer" {
+  type        = string
+  description = "Claim 'iss' do token de cliente - precisa bater com o username do KongConsumer em oficina-mvp-infra-iac (ADR-006)."
+  default     = "customer-app"
 }
 
 variable "token_ttl_seconds" {

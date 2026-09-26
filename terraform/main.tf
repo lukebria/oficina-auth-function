@@ -40,6 +40,7 @@ resource "aws_lambda_function" "authenticate" {
       BACKEND_BASE_URL    = var.backend_base_url
       INTERNAL_API_KEY    = var.internal_api_key
       CUSTOMER_JWT_SECRET = var.customer_jwt_secret
+      CUSTOMER_JWT_ISSUER = var.customer_jwt_issuer
       TOKEN_TTL_SECONDS   = tostring(var.token_ttl_seconds)
     }
   }
