@@ -50,6 +50,32 @@ variable "log_retention_days" {
   default     = 14
 }
 
+# --- Observabilidade (plano 05) - tudo opcional, vazio por padrão = nada instrumentado ---
+
+variable "new_relic_account_id" {
+  type        = string
+  description = "Account ID da conta New Relic. Vazio = extension não é anexada nem configurada."
+  default     = ""
+}
+
+variable "new_relic_license_key" {
+  type        = string
+  description = "License Key da conta New Relic (sensível). Vazio = extension não é anexada nem configurada."
+  sensitive   = true
+  default     = ""
+}
+
+variable "new_relic_lambda_layer_arn" {
+  type        = string
+  description = <<-EOT
+    ARN da layer "New Relic Lambda Extension" para Node.js, específico da região/conta - conferir o valor
+    atual em https://docs.newrelic.com/docs/serverless-function-monitoring/aws-lambda-monitoring/enable-lambda-monitoring/nodejs-agent-install
+    (varia por região da AWS e é atualizado com frequência pela New Relic, por isso não tem um default
+    fixo aqui). Vazio = layer não é anexada.
+  EOT
+  default     = ""
+}
+
 variable "tags" {
   type        = map(string)
   description = "Tags extras aplicadas a todos os recursos, além das default_tags do provider."
