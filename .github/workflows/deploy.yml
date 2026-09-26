@@ -1,0 +1,103 @@
+name: "Auth Function - Deploy"
+
+# Gatilhos: push para homolog/master (git flow do projeto) e disparo manual. Deploy automatico nas duas
+# branches - homolog e master compartilham a mesma Lambda/ambiente de lab (nao ha ambiente de producao real
+# separado neste projeto de estudo).
+on:
+  push:
+    branches:
+      - homolog
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ==========================================
+  # JOB 1: TESTES
+  # ==========================================
+  test:
+    name: "1. Typecheck & Test"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+  # ==========================================
+  # JOB 2: BUILD + DEPLOY (Terraform)
+  # ==========================================
+  deploy:
+    name: "2. Build & Terraform Apply"
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Compila e monta terraform/.build/lambda ANTES do terraform - o data source archive_file precisa que
+      # o diretorio ja exista mesmo so para "terraform plan" (provisioners local-exec so rodam no apply).
+      - name: Build & package Lambda
+        run: npm run package:lambda
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init
+
+      - name: Terraform Plan
+        working-directory: terraform
+        env:
+          TF_VAR_aws_region: ${{ vars.AWS_DEFAULT_REGION }}
+          TF_VAR_backend_base_url: ${{ vars.BACKEND_BASE_URL }}
+          TF_VAR_internal_api_key: ${{ secrets.INTERNAL_API_KEY }}
+          TF_VAR_customer_jwt_secret: ${{ secrets.CUSTOMER_JWT_SECRET }}
+        run: terraform plan -input=false
+
+      - name: Terraform Apply
+        working-directory: terraform
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          TF_VAR_aws_region: ${{ vars.AWS_DEFAULT_REGION }}
+          TF_VAR_backend_base_url: ${{ vars.BACKEND_BASE_URL }}
+          TF_VAR_internal_api_key: ${{ secrets.INTERNAL_API_KEY }}
+          TF_VAR_customer_jwt_secret: ${{ secrets.CUSTOMER_JWT_SECRET }}
+        run: terraform apply -auto-approve -input=false
