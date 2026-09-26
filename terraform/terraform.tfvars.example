@@ -18,3 +18,8 @@ customer_jwt_secret = "troque-este-segredo-de-cliente-em-producao-com-pelo-menos
 customer_jwt_issuer = "customer-app"
 
 token_ttl_seconds = 900
+
+# Observabilidade (plano 05) - opcional, deixe tudo vazio/comentado se ainda não tiver uma conta New Relic.
+# new_relic_account_id      = ""
+# new_relic_license_key     = ""
+# new_relic_lambda_layer_arn = ""

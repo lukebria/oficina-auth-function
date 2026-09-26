@@ -158,9 +158,17 @@ timestamp, ...}`, filtrável/agrupável por requisição. O documento (CPF/CNPJ)
 `customerId` no log de sucesso.
 
 Métricas básicas (invocações, duração, erros) já ficam disponíveis via CloudWatch por padrão, no log group
-`/aws/lambda/<function_name>` (retenção configurável via `log_retention_days`). Integração com uma ferramenta
-de observabilidade dedicada (New Relic, decisão do projeto — ver
-`POST-TECH/FASE-3/plans/05-observabilidade-new-relic.md`) ainda não foi feita neste repositório.
+`/aws/lambda/<function_name>` (retenção configurável via `log_retention_days`).
+
+**New Relic (opcional)**: `terraform/main.tf` já suporta anexar a New Relic Lambda Extension e configurar
+`NEW_RELIC_ACCOUNT_ID`/`NEW_RELIC_LICENSE_KEY` — tudo condicional às variáveis `new_relic_account_id`,
+`new_relic_license_key` e `new_relic_lambda_layer_arn` (vazias por padrão = nada é anexado/configurado). Para
+ativar de verdade: preencher essas três variáveis (o ARN da layer é específico de região/conta — conferir o
+valor atual na [documentação da New Relic](https://docs.newrelic.com/docs/serverless-function-monitoring/aws-lambda-monitoring/enable-lambda-monitoring/nodejs-agent-install)
+antes de configurar). A extension sozinha já cobre invocações/duração/erros; tracing distribuído completo
+exigiria trocar o handler para o wrapper da New Relic — não feito aqui de propósito, é um passo manual
+adicional para quando alguém for ativar isso com uma conta real (o nome exato do pacote wrapper muda com a
+versão do agente).
 
 ## Deploy (Terraform)
 

@@ -90,6 +90,9 @@ jobs:
           TF_VAR_backend_base_url: ${{ vars.BACKEND_BASE_URL }}
           TF_VAR_internal_api_key: ${{ secrets.INTERNAL_API_KEY }}
           TF_VAR_customer_jwt_secret: ${{ secrets.CUSTOMER_JWT_SECRET }}
+          TF_VAR_new_relic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          TF_VAR_new_relic_lambda_layer_arn: ${{ vars.NEW_RELIC_LAMBDA_LAYER_ARN }}
         run: terraform plan -input=false
 
       - name: Terraform Apply
@@ -100,4 +103,7 @@ jobs:
           TF_VAR_backend_base_url: ${{ vars.BACKEND_BASE_URL }}
           TF_VAR_internal_api_key: ${{ secrets.INTERNAL_API_KEY }}
           TF_VAR_customer_jwt_secret: ${{ secrets.CUSTOMER_JWT_SECRET }}
+          TF_VAR_new_relic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          TF_VAR_new_relic_lambda_layer_arn: ${{ vars.NEW_RELIC_LAMBDA_LAYER_ARN }}
         run: terraform apply -auto-approve -input=false
