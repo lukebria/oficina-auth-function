@@ -1,22 +1,8 @@
-data "aws_iam_policy_document" "lambda_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-
-    principals {
-      type        = "Service"
-      identifiers = ["lambda.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "lambda_exec" {
-  name               = "${var.function_name}-exec"
-  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role.json
-}
-
-resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
-  role       = aws_iam_role.lambda_exec.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+# AWS Academy Learner Lab nao permite criar IAM Roles (iam:CreateRole negado para o usuario voclabs) - usa a
+# LabRole pronta do laboratorio, que ja confia em lambda.amazonaws.com e cobre logs no CloudWatch. Mesmo
+# padrao do oficina-mvp-infra-iac (data_source_iam.tf).
+data "aws_iam_role" "lab_role" {
+  name = "LabRole"
 }
 
 resource "aws_cloudwatch_log_group" "lambda" {
@@ -26,7 +12,7 @@ resource "aws_cloudwatch_log_group" "lambda" {
 
 resource "aws_lambda_function" "authenticate" {
   function_name = var.function_name
-  role          = aws_iam_role.lambda_exec.arn
+  role          = data.aws_iam_role.lab_role.arn
   handler       = "src/handlers/aws/authenticateHandler.handler"
   runtime       = "nodejs22.x"
   timeout       = 10
@@ -60,6 +46,5 @@ resource "aws_lambda_function" "authenticate" {
 
   depends_on = [
     aws_cloudwatch_log_group.lambda,
-    aws_iam_role_policy_attachment.lambda_basic_execution,
   ]
 }
