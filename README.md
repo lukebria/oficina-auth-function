@@ -222,8 +222,8 @@ precisam ser **idênticos** aos configurados no repositório `oficina-mvp-java-b
 
 ### State remoto
 
-Backend S3 (`terraform/backend.tf`), reaproveitando o **mesmo bucket** do `oficina-mvp-infra-iac`
-(key própria: `oficina-lab/auth-function/terraform.tfstate`) e a **mesma tabela DynamoDB** de lock
+Backend S3 (`terraform/backend.tf`), reaproveitando o **mesmo bucket** de state do `oficina-mvp-infra-iac`
+(`oficina-mvp-tfstate-536036031274`, key própria: `oficina-lab/auth-function/terraform.tfstate`) e a **mesma tabela DynamoDB** de lock
 (`oficina-mvp-infra-iac-tf-lock`, compartilhada entre os states — não colide porque o `LockID` inclui
 bucket+key). 🔗 **Dependência de ordem**: essa tabela só existe depois que `oficina-mvp-infra-iac` aplicar seu
 `dynamodb.tf` — rodar `terraform init` aqui antes disso falha por falta da tabela de lock.
