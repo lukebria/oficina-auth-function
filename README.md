@@ -187,7 +187,7 @@ daquele cluster.
 ### O que é provisionado
 
 - `aws_lambda_function` (`nodejs22.x`), handler `src/handlers/aws/authenticateHandler.handler`.
-- IAM role de execução da Lambda + `AWSLambdaBasicExecutionRole` (permissão de logs).
+- IAM: usa a `LabRole` já existente no AWS Academy Learner Lab (o Lab não permite criar IAM Roles) — ela confia em `lambda.amazonaws.com` e cobre os logs no CloudWatch.
 - Log group no CloudWatch (`/aws/lambda/<function_name>`).
 - Uma **HTTP API** (API Gateway v2, `payload_format_version = "1.0"` para bater com o formato
   `APIGatewayProxyEvent` que o handler já espera) com a rota `POST /authenticate`.
