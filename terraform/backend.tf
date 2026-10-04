@@ -13,7 +13,7 @@
 
 terraform {
   backend "s3" {
-    bucket         = "oficina-mvp-infra-iac"
+    bucket         = "oficina-mvp-tfstate-536036031274"
     key            = "oficina-lab/auth-function/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
