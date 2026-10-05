@@ -215,9 +215,18 @@ Ao final, o output `api_endpoint` traz a URL pública (`POST`) que consome o han
   (compila e monta `terraform/.build/lambda`, necessário mesmo para o `terraform plan` — o provisioner
   `local-exec` do `build.tf` só roda no `apply`) → `terraform init/plan/apply`, seguindo o git flow do projeto.
 
-⚠️ **Ainda não configurado**: os GitHub Secrets/Variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`,
-`AWS_SESSION_TOKEN`, `AWS_DEFAULT_REGION`, `BACKEND_BASE_URL`, `INTERNAL_API_KEY`, `CUSTOMER_JWT_SECRET`) —
-sem eles, o job `deploy` falha no passo "Configure AWS Credentials". `INTERNAL_API_KEY`/`CUSTOMER_JWT_SECRET`
+**Chave de deploy — variable `DEPLOY_ENABLED`** (o crédito do AWS Academy é limitado; detalhe em
+`plans/10-chave-deploy-enabled.md` no repositório de specs):
+- `true` → em push para `homolog`/`master`, executa automaticamente o job `deploy` (build + `terraform init/plan/apply`) (deploy automático de homologação e
+  produção, como pede o enunciado).
+- `false` ou ausente → o pipeline roda só o que não depende da AWS e **pula** (*skipped*) o job `deploy` (build + `terraform init/plan/apply`). É o estado
+  padrão fora de uma janela de deploy, para um merge não subir recursos pagos.
+- **Disparo manual** (*Actions → Run workflow*) ignora a chave: rodar pelo botão já é uma decisão explícita.
+- Ligar/desligar: *Settings → Secrets and variables → Actions → Variables → `DEPLOY_ENABLED`*.
+
+GitHub Secrets/Variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
+`AWS_DEFAULT_REGION`, `BACKEND_BASE_URL`, `INTERNAL_API_KEY`, `CUSTOMER_JWT_SECRET`) configurados em 2026-10-04 —
+os 3 secrets AWS expiram a cada sessão do Learner Lab e `BACKEND_BASE_URL` muda a cada recriação do Kong. `INTERNAL_API_KEY`/`CUSTOMER_JWT_SECRET`
 precisam ser **idênticos** aos configurados no repositório `oficina-mvp-java-backend`.
 
 ### State remoto
