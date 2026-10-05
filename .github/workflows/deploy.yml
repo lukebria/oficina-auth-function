@@ -46,6 +46,8 @@ jobs:
   deploy:
     name: "2. Build & Terraform Apply"
     needs: test
+    # Chave de deploy (plans/10): usa credenciais AWS - só roda com DEPLOY_ENABLED=true ou disparo manual.
+    if: (vars.DEPLOY_ENABLED == 'true' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
