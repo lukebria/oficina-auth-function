@@ -1,13 +1,42 @@
 # oficina-auth-function
 
-Function Serverless de autenticação via CPF/CNPJ para o [`oficina-mvp-java`](../oficina-mvp-java) (backend da
-oficina mecânica). Faz parte da fase 3 do tech challenge: um API Gateway (produto ainda em definição) fica na
-frente desta function, que:
+Function Serverless de autenticação via CPF/CNPJ para o
+[`oficina-mvp-java-backend`](https://github.com/lukebria/oficina-mvp-java-backend) (backend da oficina mecânica),
+repositório 1/4 do Tech Challenge Fase 3. Fica atrás do **AWS API Gateway (HTTP API)**, rota `POST /authenticate`,
+e:
 
 1. valida o CPF/CNPJ informado pelo cliente;
 2. consulta `GET /api/internal/customers/{document}` no backend Java para confirmar existência/status do cliente;
 3. assina e devolve um JWT válido para consumir as rotas públicas de OS do backend
-   (`GET /api/public/service-orders/{code}`, `POST /api/public/service-orders/{code}/approval`).
+   (`GET /api/public/service-orders/{code}`, `POST /api/public/service-orders/{code}/approval`). Essas rotas ficam
+   atrás do **Kong** (o API Gateway da aplicação), que valida o mesmo JWT antes de repassar (ADR-006).
+
+### Estado atual (2026-10-05)
+
+- ✅ **Validado em ambiente real** (04/10 e 05/10): `POST /authenticate` → `400` (CPF inválido), `404` (cliente
+  inexistente), `200` + JWT (cliente válido); o JWT é aceito pelo Kong e recusado quando adulterado. A Lambda sobe
+  com a layer da New Relic (`NewRelicNodeJS22X:108`).
+- O ambiente **não fica ligado** (crédito limitado do AWS Academy): é recriado para testes e para a gravação.
+  Passo a passo: **runbook do projeto** (`runbook/RUNBOOK.md` no repositório de specs). A URL da API muda a cada
+  recriação; `BACKEND_BASE_URL` precisa apontar para o Kong do momento (`node wire-endpoints.js kong`).
+- **Chave `DEPLOY_ENABLED`**: com `false` (padrão) os merges só rodam os testes; com `true` (ou disparo manual)
+  fazem deploy. Ver [CI/CD](#cicd-github-actions).
+
+### Como chamar (quando o ambiente estiver de pé)
+
+```bash
+# URL atual da API (muda a cada recriação)
+aws apigatewayv2 get-apis --query "Items[?Name=='oficina-auth-function-api'].ApiEndpoint" --output text
+curl -X POST "<ApiEndpoint>/authenticate" -H "Content-Type: application/json" -d '{"document":"52998224725"}'
+```
+```powershell
+Invoke-RestMethod -Method Post -Uri "<ApiEndpoint>/authenticate" -ContentType "application/json" -Body '{"document":"52998224725"}'
+```
+
+Pelo console da AWS: **API Gateway → `oficina-auth-function-api`** (rota `POST /authenticate`, *Stages* → URL) e
+**Lambda → `oficina-auth-function` → aba Test**, com o evento `{"body": "{\"document\":\"52998224725\"}"}`
+(aba *Monitor* → logs no CloudWatch). O token devolvido é usado em
+`GET http://<DNS do Kong>/api/public/service-orders/<código>` com `Authorization: Bearer <token>`.
 
 ## Stack
 
@@ -43,7 +72,7 @@ o mesmo `authenticateByDocument` com as mesmas portas — sem tocar em `core/` n
 sequenceDiagram
     participant Cliente
     participant Function as oficina-auth-function (Lambda)
-    participant Backend as oficina-mvp-java (interno)
+    participant Backend as oficina-mvp-java-backend (interno)
     participant Kong as Kong (API Gateway, rota pública)
 
     Cliente->>Function: POST /authenticate {"document": "CPF/CNPJ"}
@@ -70,7 +99,7 @@ Infraestrutura provisionada (ver [Deploy (Terraform)](#deploy-terraform)): API G
 function (distinta do Kong que protege a aplicação principal) → Lambda → CloudWatch Logs (estruturados em
 JSON, ver [Observabilidade e logs](#observabilidade-e-logs)).
 
-## Contrato com o backend `oficina-mvp-java`
+## Contrato com o backend `oficina-mvp-java-backend`
 
 Ver [`docs/architecture.md`](https://github.com/lukebria/oficina-mvp-java-backend/blob/master/docs/architecture.md)
 (seção 5, "Segurança") no repositório `oficina-mvp-java-backend` — este documento vive naquele repositório, não
@@ -255,15 +284,13 @@ Backend S3 (`terraform/backend.tf`), reaproveitando o **mesmo bucket** de state 
 bucket+key). 🔗 **Dependência de ordem**: essa tabela só existe depois que `oficina-mvp-infra-iac` aplicar seu
 `dynamodb.tf` — rodar `terraform init` aqui antes disso falha por falta da tabela de lock.
 
-### Configuração pendente para um ambiente real (fica para depois)
+### Melhorias para um ambiente de produção real (fora do escopo do desafio)
 
-O que está em `terraform/` hoje é suficiente para provisionar a function num ambiente pessoal/de teste. Antes de
-considerar isso pronto para um ambiente real de produção, falta configurar:
+O que está em `terraform/` atende o ambiente de lab do desafio (validado em 2026-10). Os valores
+(`backend_base_url`, `internal_api_key`, `customer_jwt_secret`) chegam via `TF_VAR_*` do pipeline, a partir dos
+GitHub Secrets/Variables já configurados; para rodar local, vêm de `terraform.tfvars` (modelo em
+`terraform.tfvars.example`). Para produção de verdade, ainda caberia:
 
-- **`aws_region`/`backend_base_url`/`internal_api_key`/`customer_jwt_secret` em produção real** — hoje esses
-  valores chegam via `TF_VAR_*` injetados pelo pipeline (`deploy.yml`) a partir de GitHub Secrets/Variables
-  ainda não configurados (ver [CI/CD](#cicd-github-actions)) — para rodar local, continuam vindo de
-  `terraform.tfvars` (placeholder de exemplo em `terraform.tfvars.example`).
 - **CORS na HTTP API** — se algum frontend for chamar `POST /authenticate` direto do navegador, falta configurar
   `cors_configuration` em `aws_apigatewayv2_api`.
 - **Rate limiting/throttling** — o endpoint recebe CPF/CNPJ como entrada; sem limite de requisições por IP/chave
@@ -271,8 +298,7 @@ considerar isso pronto para um ambiente real de produção, falta configurar:
 - **Domínio customizado + certificado ACM** — hoje a URL fica no domínio padrão do API Gateway
   (`*.execute-api.<região>.amazonaws.com`); um domínio próprio é opcional, mas comum em produção.
 
-Nenhum desses pontos é implementado agora — ficam de propósito para quando a configuração de cloud real for
-definida.
+Nenhum desses pontos é exigido pelo enunciado; ficam registrados como próximos passos de produção.
 
 ## Fora de escopo deste repositório (por enquanto)
 
