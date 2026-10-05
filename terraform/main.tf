@@ -8,10 +8,16 @@ data "aws_iam_role" "lab_role" {
 resource "aws_cloudwatch_log_group" "lambda" {
   name              = "/aws/lambda/${var.function_name}"
   retention_in_days = var.log_retention_days
+
+  tags = {
+    Name        = "oficina-mvp-auth-logs"
+    Description = "Logs da Lambda de login por CPF"
+  }
 }
 
 resource "aws_lambda_function" "authenticate" {
   function_name = var.function_name
+  description   = "Login por CPF: valida o cliente no backend e emite o JWT"
   role          = data.aws_iam_role.lab_role.arn
   handler       = "src/handlers/aws/authenticateHandler.handler"
   runtime       = "nodejs22.x"
@@ -42,6 +48,11 @@ resource "aws_lambda_function" "authenticate" {
         NEW_RELIC_LICENSE_KEY = var.new_relic_license_key
       } : {}
     )
+  }
+
+  tags = {
+    Name        = "oficina-mvp-auth-lambda"
+    Description = "Login por CPF: valida o cliente no backend e emite o JWT"
   }
 
   depends_on = [

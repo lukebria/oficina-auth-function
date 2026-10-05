@@ -208,6 +208,24 @@ terraform apply
 
 Ao final, o output `api_endpoint` traz a URL pública (`POST`) que consome o handler.
 
+### Tags dos recursos (o que é cada coisa no console)
+
+Todo recurso AWS criado por este repositório leva as **tags comuns do projeto** (`default_tags` do provider):
+`Project=oficina-mvp` (igual nos 3 repos de Terraform), `Repository=oficina-auth-function`, `Component=autenticacao`,
+`Environment=lab`, `ManagedBy=terraform`, `Course=FIAP POSTECH 13SOAT - Tech Challenge Fase 3`. Além delas,
+cada recurso tem **`Name`** (o que aparece na coluna *Name* do console) e **`Description`**:
+
+| `Name` | Recurso | `Description` |
+|---|---|---|
+| `oficina-mvp-auth-lambda` | Lambda `oficina-auth-function` | Login por CPF: valida o cliente no backend e emite o JWT (também no campo *Description* da Lambda) |
+| `oficina-mvp-auth-api` | API Gateway (HTTP API) `oficina-auth-function-api` | Endpoint público `POST /authenticate` (também no campo *Description* da API) |
+| `oficina-mvp-auth-logs` | Log group `/aws/lambda/oficina-auth-function` | Logs da Lambda |
+
+Para ver **todos** os recursos do projeto numa tela só: console AWS → **Resource Groups & Tag Editor → Tag Editor**
+→ Region `us-east-1`, Resource types `All supported`, Tag `Project` = `oficina-mvp` → *Search resources*.
+Os nomes técnicos (`oficina-mecnica-lab-...`, com o erro de digitação histórico) foram mantidos para não recriar
+recursos nem quebrar pipelines; a tag `Name` é o nome legível.
+
 ### CI/CD (GitHub Actions)
 
 - **`ci.yml`** — em PR para `homolog`/`master`: `npm ci` → `typecheck` → `test`. Não toca em infra.
