@@ -2,7 +2,13 @@
 # o evento no mesmo formato APIGatewayProxyEvent que o handler (src/handlers/aws/authenticateHandler.ts) já espera.
 resource "aws_apigatewayv2_api" "this" {
   name          = "${var.function_name}-api"
+  description   = "Endpoint publico POST /authenticate da Lambda de login por CPF"
   protocol_type = "HTTP"
+
+  tags = {
+    Name        = "oficina-mvp-auth-api"
+    Description = "Endpoint publico POST /authenticate da Lambda de login por CPF"
+  }
 }
 
 resource "aws_apigatewayv2_integration" "lambda" {
