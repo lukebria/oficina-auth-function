@@ -1,0 +1,64 @@
+name: "Auth Function - Destroy"
+
+# Plano 18: destroy da Lambda + API Gateway pelo botão (Actions -> Run workflow), sem precisar de Terraform na
+# máquina de quem derruba o ambiente. Rodar ANTES do destroy do oficina-mvp-infra-db / oficina-mvp-infra-iac.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  destroy:
+    name: "Terraform Destroy"
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # O data source archive_file precisa do pacote da Lambda mesmo no destroy
+      - name: Build & package Lambda
+        run: |
+          npm ci
+          npm run package:lambda
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ vars.AWS_DEFAULT_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.5.0
+
+      - name: State bucket
+        id: state
+        run: echo "bucket=$(bash scripts/state-bucket.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Init
+        working-directory: terraform
+        run: terraform init -backend-config="bucket=${{ steps.state.outputs.bucket }}"
+
+      # No destroy os valores das variáveis não importam (só precisam existir e ter formato válido)
+      - name: Terraform Destroy
+        working-directory: terraform
+        env:
+          TF_VAR_aws_region: ${{ vars.AWS_DEFAULT_REGION }}
+          TF_VAR_backend_base_url: http://destroy
+          TF_VAR_internal_api_key: ${{ secrets.INTERNAL_API_KEY }}
+          TF_VAR_customer_jwt_secret: ${{ secrets.CUSTOMER_JWT_SECRET }}
+          TF_VAR_new_relic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_new_relic_license_key: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
+          TF_VAR_new_relic_lambda_layer_arn: ${{ vars.NEW_RELIC_LAMBDA_LAYER_ARN }}
+        run: terraform destroy -auto-approve -input=false

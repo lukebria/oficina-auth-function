@@ -1,6 +1,6 @@
 name: "Auth Function - Deploy"
 
-# Gatilhos: push para homolog/master (git flow do projeto) e disparo manual. Deploy automatico nas duas
+# Gatilhos: push para homolog/master (git flow do projeto) e disparo manual. Destroy: destroy.yml. Deploy automatico nas duas
 # branches - homolog e master compartilham a mesma Lambda/ambiente de lab (nao ha ambiente de producao real
 # separado neste projeto de estudo).
 on:
@@ -81,15 +81,33 @@ jobs:
         with:
           terraform_version: 1.5.0
 
+      # Plano 18: nada fixo de conta/ambiente - o bucket de state vem da conta das credenciais e o endereço do backend
+      # (LoadBalancer do Kong, que muda a cada recriação do cluster) é lido do cluster na hora do deploy.
+      - name: Discover state bucket and Kong address
+        id: env
+        run: |
+          echo "bucket=$(bash scripts/state-bucket.sh)" >> "$GITHUB_OUTPUT"
+          if ! aws eks update-kubeconfig --name oficina-mecnica-lab-cluster --region "$AWS_REGION" >/dev/null 2>&1; then
+            echo "::error::Cluster EKS oficina-mecnica-lab-cluster não encontrado. Suba o oficina-mvp-infra-iac primeiro."
+            exit 1
+          fi
+          ELB=$(kubectl get svc -n kong kong-kong-proxy -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          if [ -z "$ELB" ]; then
+            echo "::error::LoadBalancer do Kong ainda sem endereço. Espere 1-2 min e rode de novo."
+            exit 1
+          fi
+          echo "Backend (Kong): http://$ELB"
+          echo "backend_base_url=http://$ELB" >> "$GITHUB_OUTPUT"
+
       - name: Terraform Init
         working-directory: terraform
-        run: terraform init
+        run: terraform init -backend-config="bucket=${{ steps.env.outputs.bucket }}"
 
       - name: Terraform Plan
         working-directory: terraform
         env:
           TF_VAR_aws_region: ${{ vars.AWS_DEFAULT_REGION }}
-          TF_VAR_backend_base_url: ${{ vars.BACKEND_BASE_URL }}
+          TF_VAR_backend_base_url: ${{ steps.env.outputs.backend_base_url }}
           TF_VAR_internal_api_key: ${{ secrets.INTERNAL_API_KEY }}
           TF_VAR_customer_jwt_secret: ${{ secrets.CUSTOMER_JWT_SECRET }}
           TF_VAR_new_relic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
@@ -102,7 +120,7 @@ jobs:
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           TF_VAR_aws_region: ${{ vars.AWS_DEFAULT_REGION }}
-          TF_VAR_backend_base_url: ${{ vars.BACKEND_BASE_URL }}
+          TF_VAR_backend_base_url: ${{ steps.env.outputs.backend_base_url }}
           TF_VAR_internal_api_key: ${{ secrets.INTERNAL_API_KEY }}
           TF_VAR_customer_jwt_secret: ${{ secrets.CUSTOMER_JWT_SECRET }}
           TF_VAR_new_relic_account_id: ${{ vars.NEW_RELIC_ACCOUNT_ID }}
