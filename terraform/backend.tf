@@ -11,9 +11,10 @@
 # adquirir lock. Ver README, seção "Deploy (Terraform)".
 # ==============================================================================
 
+# O bucket NÃO fica fixo (plano 18): é oficina-mvp-tfstate-<conta AWS>, passado no init pelo workflow
+# (-backend-config="bucket=..."). Local: terraform init -backend-config="bucket=$(../scripts/state-bucket.sh)"
 terraform {
   backend "s3" {
-    bucket         = "oficina-mvp-tfstate-536036031274"
     key            = "oficina-lab/auth-function/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
