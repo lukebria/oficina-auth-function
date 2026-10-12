@@ -17,8 +17,9 @@ e:
   inexistente), `200` + JWT (cliente válido); o JWT é aceito pelo Kong e recusado quando adulterado. A Lambda sobe
   com a layer da New Relic (`NewRelicNodeJS22X:108`).
 - O ambiente **não fica ligado** (crédito limitado do AWS Academy): é recriado para testes e para a gravação.
-  Passo a passo: **runbook do projeto** (`runbook/RUNBOOK.md` no repositório de specs). A URL da API muda a cada
-  recriação; `BACKEND_BASE_URL` precisa apontar para o Kong do momento (`node wire-endpoints.js kong`).
+  Passo a passo: **[guia de gravação/runbook](https://github.com/lukebria/oficina-mvp-infra-iac/blob/master/runbook/RUNBOOK.md)**.
+  A URL da API muda a cada recriação; o endereço do backend (LoadBalancer do Kong) é descoberto pelo próprio
+  deploy, lendo o cluster (plano 18).
 - **Chave `DEPLOY_ENABLED`**: com `false` (padrão) os merges só rodam os testes; com `true` (ou disparo manual)
   fazem deploy. Ver [CI/CD](#cicd-github-actions).
 
@@ -230,7 +231,7 @@ O empacotamento (`terraform/build.tf`) roda `npm run build` e monta o zip com `d
 ```bash
 cd terraform
 cp terraform.tfvars.example terraform.tfvars   # preencher com os valores reais — nunca commitar este arquivo
-terraform init
+terraform init -backend-config="bucket=$(bash ../scripts/state-bucket.sh)"   # bucket de state da sua conta
 terraform plan
 terraform apply
 ```
@@ -260,7 +261,11 @@ recursos nem quebrar pipelines; a tag `Name` é o nome legível.
 - **`ci.yml`** — em PR para `homolog`/`master`: `npm ci` → `typecheck` → `test`. Não toca em infra.
 - **`deploy.yml`** — em push para `homolog`/`master` (ou disparo manual): testes → `npm run package:lambda`
   (compila e monta `terraform/.build/lambda`, necessário mesmo para o `terraform plan` — o provisioner
-  `local-exec` do `build.tf` só roda no `apply`) → `terraform init/plan/apply`, seguindo o git flow do projeto.
+  `local-exec` do `build.tf` só roda no `apply`) → descobre o bucket de state da conta e o endereço do Kong →
+  `terraform init/plan/apply`, seguindo o git flow do projeto. Falha com mensagem clara se o cluster/Kong ainda
+  não subiu (`oficina-mvp-infra-iac` vem antes).
+- **`destroy.yml`** — só disparo manual: `terraform destroy` da Lambda + API Gateway (rodar antes do destroy do
+  infra-db/infra-iac).
 
 **Chave de deploy — variable `DEPLOY_ENABLED`** (o crédito do AWS Academy é limitado; detalhe em
 `plans/10-chave-deploy-enabled.md` no repositório de specs):
@@ -272,14 +277,14 @@ recursos nem quebrar pipelines; a tag `Name` é o nome legível.
 - Ligar/desligar: *Settings → Secrets and variables → Actions → Variables → `DEPLOY_ENABLED`*.
 
 GitHub Secrets/Variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`,
-`AWS_DEFAULT_REGION`, `BACKEND_BASE_URL`, `INTERNAL_API_KEY`, `CUSTOMER_JWT_SECRET`) configurados em 2026-10-04 —
-os 3 secrets AWS expiram a cada sessão do Learner Lab e `BACKEND_BASE_URL` muda a cada recriação do Kong. `INTERNAL_API_KEY`/`CUSTOMER_JWT_SECRET`
+`AWS_DEFAULT_REGION`, `INTERNAL_API_KEY`, `CUSTOMER_JWT_SECRET`, `NEW_RELIC_*`) configurados em 2026-10-04 — só os
+3 secrets AWS mudam (a cada sessão do Learner Lab); o endereço do backend não é mais variable (é lido do cluster). `INTERNAL_API_KEY`/`CUSTOMER_JWT_SECRET`
 precisam ser **idênticos** aos configurados no repositório `oficina-mvp-java-backend`.
 
 ### State remoto
 
 Backend S3 (`terraform/backend.tf`), reaproveitando o **mesmo bucket** de state do `oficina-mvp-infra-iac`
-(`oficina-mvp-tfstate-536036031274`, key própria: `oficina-lab/auth-function/terraform.tfstate`) e a **mesma tabela DynamoDB** de lock
+(`oficina-mvp-tfstate-<conta AWS>`, calculado por `scripts/state-bucket.sh` a partir das credenciais — plano 18; key própria: `oficina-lab/auth-function/terraform.tfstate`) e a **mesma tabela DynamoDB** de lock
 (`oficina-mvp-infra-iac-tf-lock`, compartilhada entre os states — não colide porque o `LockID` inclui
 bucket+key). 🔗 **Dependência de ordem**: essa tabela só existe depois que `oficina-mvp-infra-iac` aplicar seu
 `dynamodb.tf` — rodar `terraform init` aqui antes disso falha por falta da tabela de lock.
